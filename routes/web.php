@@ -3,6 +3,10 @@
 use App\Services\HelloWork\HelloWorkHtmlFetcher;
 use App\Services\HelloWork\HelloWorkHtmlParser;
 use App\Services\HelloWork\HelloWorkJobNumberExtractor;
+use App\Services\HelloWork\HelloWorkJobDataNormalizer;
+use App\Services\HelloWork\WageEstimateCalculator;
+use App\Services\HelloWork\EstimateResultFormatter;
+
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 
@@ -18,7 +22,10 @@ Route::post('/hellowork/fetch', function (
     Request $request,
     HelloWorkJobNumberExtractor $extractor,
     HelloWorkHtmlFetcher $fetcher,
-    HelloWorkHtmlParser $parser
+    HelloWorkHtmlParser $parser,
+    HelloWorkJobDataNormalizer $normalizer,
+    WageEstimateCalculator $calculator,
+    EstimateResultFormatter $formatter
 ) {
     $validated = $request->validate([
         'url' => ['required', 'url'],
@@ -32,10 +39,27 @@ Route::post('/hellowork/fetch', function (
         $result = $fetcher->fetchAndSave($validated['url'], $jobNumber);
 
         // 保存したHTMLを読み込み、求人票の主要項目を抽出する。
+        // 抽出した文字列を、計算しやすい数値データに変換する。
         $parsed = $parser->parseFile($result['file_path']);
+        $normalized = $normalizer->normalize($parsed);
 
-        // 保存結果の中に、抽出結果も含める。
+        // 正規化済みデータから賃金見積もりを計算する。
+        $estimate = $calculator->calculate($normalized);
+
+        // MVPでは大阪府最低賃金を仮設定する。
+        $formattedEstimate = $formatter->format(
+            $estimate,
+            $normalized,
+            1177,
+            '大阪府'
+        );
+
+
+        // 保存結果の中に、抽出結果・正規化結果・計算結果を含める。
         $result['parsed'] = $parsed;
+        $result['normalized'] = $normalized;
+        $result['estimate'] = $estimate;
+        $result['formatted_estimate'] = $formattedEstimate;
     } catch (\Throwable $e) {
         return back()
             ->withErrors(['url' => $e->getMessage()])

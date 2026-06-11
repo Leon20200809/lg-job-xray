@@ -2,6 +2,10 @@
 → URL入力フォームを表示する
 → 保存結果を表示する
 → エラーを表示する --}}
+@php
+    $result = session('result');
+@endphp
+
 <!DOCTYPE html>
 <html lang="ja">
 
@@ -50,7 +54,7 @@
                 </div>
             @endif
 
-            @if (session('success'))
+            @if ($result)
                 <div class="mt-6 rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-emerald-800">
                     {{ session('success') }}
                 </div>
@@ -82,11 +86,7 @@
                 </div>
             </form>
 
-            @if (session('result'))
-                @php
-                    $result = session('result');
-                @endphp
-
+            @if ($result)
                 <div class="mt-8 rounded-xl border border-slate-200 bg-slate-50 p-5">
                     <h2 class="text-lg font-bold text-slate-950">
                         保存結果
@@ -165,6 +165,105 @@
                             </div>
                         @endforeach
                     </dl>
+                </div>
+            @endif
+
+            @if (!empty($result['normalized']))
+                <div class="mt-8 rounded-xl border border-slate-200 bg-white p-5">
+                    <h2 class="text-lg font-bold text-slate-950">正規化結果</h2>
+
+                    <dl class="mt-4 space-y-4">
+                        @foreach ($result['normalized'] as $key => $value)
+                            <div>
+                                <dt class="text-sm font-bold text-slate-700">
+                                    {{ $key }}
+                                </dt>
+                                <dd class="mt-1 break-all text-slate-950">
+                                    {{ is_null($value) ? '未取得' : $value }}
+                                </dd>
+                            </div>
+                        @endforeach
+                    </dl>
+                </div>
+            @endif
+
+            @if (!empty($result['estimate']))
+                <div class="mt-8 rounded-xl border border-red-200 bg-red-50 p-5">
+                    <h2 class="text-lg font-bold text-slate-950">賃金見積もり</h2>
+
+                    <dl class="mt-4 space-y-4">
+                        @foreach ($result['estimate'] as $key => $value)
+                            <div>
+                                <dt class="text-sm font-bold text-slate-700">
+                                    {{ $key }}
+                                </dt>
+                                <dd class="mt-1 break-all text-slate-950">
+                                    {{ is_null($value) ? '未取得' : $value }}
+                                </dd>
+                            </div>
+                        @endforeach
+                    </dl>
+                </div>
+            @endif
+
+            @if (!empty($result['formatted_estimate']))
+                <div class="mt-8 rounded-2xl border border-red-200 bg-red-50 p-6">
+                    <p class="mb-2 text-sm font-bold tracking-wider text-red-800">
+                        Wage X-Ray
+                    </p>
+
+                    <h2 class="text-2xl font-bold text-slate-950">
+                        {{ $result['formatted_estimate']['title'] }}
+                    </h2>
+
+                    <p class="mt-4 leading-8 text-slate-700">
+                        {{ $result['formatted_estimate']['summary'] }}
+                    </p>
+
+                    @if (!empty($result['formatted_estimate']['items']))
+                        <dl class="mt-6 grid gap-4">
+                            @foreach ($result['formatted_estimate']['items'] as $item)
+                                <div class="rounded-xl border border-slate-200 bg-white p-4">
+                                    <dt class="text-sm font-bold text-slate-600">
+                                        {{ $item['label'] }}
+                                    </dt>
+                                    <dd class="mt-1 text-xl font-bold text-slate-950">
+                                        {{ $item['value'] }}
+                                    </dd>
+                                </div>
+                            @endforeach
+                        </dl>
+                    @endif
+
+                    @if (!empty($result['formatted_estimate']['alerts']))
+                        <div class="mt-6 space-y-3">
+                            @foreach ($result['formatted_estimate']['alerts'] as $alert)
+                                <div class="rounded-xl border bg-white p-4">
+                                    <p class="text-sm font-bold text-slate-700">
+                                        {{ $alert['label'] }}
+                                    </p>
+
+                                    <p class="mt-2 leading-7 text-slate-700">
+                                        {{ $alert['message'] }}
+                                    </p>
+                                </div>
+                            @endforeach
+                        </div>
+                    @endif
+
+                    @if (!empty($result['formatted_estimate']['notes']))
+                        <div class="mt-6 rounded-xl border border-slate-200 bg-white p-4">
+                            <p class="text-sm font-bold text-slate-700">
+                                補足
+                            </p>
+
+                            <ul class="mt-2 list-disc space-y-2 pl-5 text-sm leading-7 text-slate-600">
+                                @foreach ($result['formatted_estimate']['notes'] as $note)
+                                    <li>{{ $note }}</li>
+                                @endforeach
+                            </ul>
+                        </div>
+                    @endif
                 </div>
             @endif
         </section>
