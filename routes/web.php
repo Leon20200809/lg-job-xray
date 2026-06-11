@@ -1,8 +1,9 @@
 <?php
 
+use App\Services\HelloWork\HelloWorkHtmlFetcher;
+use App\Services\HelloWork\HelloWorkJobNumberExtractor;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
-use App\Services\HelloWork\HelloWorkJobNumberExtractor;
 
 Route::get('/', function () {
     return redirect()->route('hellowork.fetch.create');
@@ -12,29 +13,28 @@ Route::get('/hellowork/fetch', function () {
     return view('hellowork.fetch');
 })->name('hellowork.fetch.create');
 
-
 Route::post('/hellowork/fetch', function (
     Request $request,
-    HelloWorkJobNumberExtractor $extractor
+    HelloWorkJobNumberExtractor $extractor,
+    HelloWorkHtmlFetcher $fetcher
 ) {
     $validated = $request->validate([
         'url' => ['required', 'url'],
     ]);
 
     try {
+        // URLを分解して求人番号 kJNo を取り出す。
         $jobNumber = $extractor->extract($validated['url']);
-    } catch (\InvalidArgumentException $e) {
+
+        // URLへアクセスしてHTMLを取得し、storage/app/hellowork-html に保存する。
+        $result = $fetcher->fetchAndSave($validated['url'], $jobNumber);
+    } catch (\Throwable $e) {
         return back()
             ->withErrors(['url' => $e->getMessage()])
             ->withInput();
     }
 
     return back()
-        ->with('success', 'URLチェック成功。次はHTML保存処理を接続します。')
-        ->with('result', [
-            'job_number' => $jobNumber,
-            'file_name' => $jobNumber . '.html',
-            'file_path' => 'storage/app/hellowork-html/' . $jobNumber . '.html',
-            'file_size' => '未保存',
-        ]);
+        ->with('success', 'HTMLを取得して保存しました。')
+        ->with('result', $result);
 })->name('hellowork.fetch.store');
