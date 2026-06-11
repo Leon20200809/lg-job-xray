@@ -22,28 +22,7 @@ class HelloWorkHtmlFetcher
     public function fetchAndSave(string $url, string $jobNumber): array
     {
         // ハローワーク側へHTTP GETリクエストを送る。
-        // timeout(15) は「15秒待っても返事がなければ失敗扱い」にする設定。
-        $response = Http::timeout(15)
-            ->withHeaders([
-                // ブラウザっぽいUser-Agentを付ける。
-                // 一部サイトはUser-Agentなしのアクセスを嫌うことがある。
-                'User-Agent' => 'Mozilla/5.0 LG-Job-XRay/1.0',
-            ])
-            ->get($url);
-
-        // HTTPステータスが 200番台 以外なら例外にする。
-        // 例：404 Not Found / 500 Server Error など。
-        if (! $response->successful()) {
-            throw new \RuntimeException('HTMLの取得に失敗しました。HTTPステータス: ' . $response->status());
-        }
-
-        // レスポンス本文、つまりHTML文字列を取得する。
-        $html = $response->body();
-
-        // 念のため、空HTMLなら失敗扱いにする。
-        if ($html === '') {
-            throw new \RuntimeException('取得したHTMLが空でした。');
-        }
+        $html = $this->fetchHtml($url);
 
         // 保存ディレクトリ。
         // storage/app/hellowork-html に保存する。
@@ -69,5 +48,31 @@ class HelloWorkHtmlFetcher
             'file_path' => $filePath,
             'file_size' => number_format(File::size($filePath)) . ' bytes',
         ];
+    }
+
+    public function fetchHtml(string $url): string
+    {
+        // ハローワーク側へHTTP GETリクエストを送る。
+        // timeout(15) は「15秒待っても返事がなければ失敗扱い」にする設定。
+        $response = Http::timeout(15)
+            ->withHeaders([
+                // ブラウザっぽいUser-Agentを付ける。
+                // 一部サイトはUser-Agentなしのアクセスを嫌うことがある。
+                'User-Agent' => 'Mozilla/5.0 LG-Job-XRay/1.0',
+            ])
+            ->get($url);
+
+        // HTTPステータスが 200番台 以外なら例外にする。
+        if (! $response->successful()) {
+            throw new \RuntimeException('HTMLの取得に失敗しました。HTTPステータス: ' . $response->status());
+        }
+
+        $html = $response->body();
+
+        if ($html === '') {
+            throw new \RuntimeException('取得したHTMLが空でした。');
+        }
+
+        return $html;
     }
 }

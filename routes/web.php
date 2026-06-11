@@ -11,8 +11,57 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/', function () {
-    return redirect()->route('hellowork.fetch.create');
-});
+    return view('welcome');
+})->name('xray.index');
+
+Route::post('/xray', function (
+    Request $request,
+    HelloWorkJobNumberExtractor $extractor,
+    HelloWorkHtmlFetcher $fetcher,
+    HelloWorkHtmlParser $parser,
+    HelloWorkJobDataNormalizer $normalizer,
+    WageEstimateCalculator $calculator,
+    EstimateResultFormatter $formatter
+) {
+    $validated = $request->validate([
+        'url' => ['required', 'url'],
+    ]);
+
+    try {
+        $jobNumber = $extractor->extract($validated['url']);
+
+        // 保存せず、HTML文字列だけ取得する。
+        $html = $fetcher->fetchHtml($validated['url']);
+
+        $parsed = $parser->parseHtml($html);
+        $normalized = $normalizer->normalize($parsed);
+        $estimate = $calculator->calculate($normalized);
+
+        $formattedEstimate = $formatter->format(
+            $estimate,
+            $normalized,
+            1177,
+            '大阪府'
+        );
+
+        $result = [
+            'job_number' => $jobNumber,
+            'parsed' => $parsed,
+            'normalized' => $normalized,
+            'estimate' => $estimate,
+            'formatted_estimate' => $formattedEstimate,
+        ];
+    } catch (\Throwable $e) {
+        return back()
+            ->withErrors(['url' => $e->getMessage()])
+            ->withInput();
+    }
+
+    return back()
+        ->with('success', '求人情報を解析しました。')
+        ->with('result', $result);
+})->middleware('throttle:5,1')->name('xray.analyze');
+
 
 Route::get('/hellowork/fetch', function () {
     return view('hellowork.fetch');
