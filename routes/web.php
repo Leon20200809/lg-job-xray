@@ -6,13 +6,24 @@ use App\Services\HelloWork\HelloWorkJobNumberExtractor;
 use App\Services\HelloWork\HelloWorkJobDataNormalizer;
 use App\Services\HelloWork\WageEstimateCalculator;
 use App\Services\HelloWork\EstimateResultFormatter;
+use App\Services\HelloWork\HelloWorkLlmPackBuilder;
 
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 
+// 最初の定義（後で上書きされて無効になる）
 Route::get('/', function () {
-    return view('welcome');
+    return view('welcome'); // ← 実際には使われない
 })->name('xray.index');
+
+// これが '/' を上書きして有効になる
+Route::view('/', 'xray.llm-pack')->name('xray.index');
+
+// '/xray/llm-pack' も同じビューを返す
+Route::view('/xray/llm-pack', 'xray.llm-pack')
+    ->name('xray.llm-pack.create');
+
+
 
 Route::post('/xray', function (
     Request $request,
@@ -119,3 +130,48 @@ Route::post('/hellowork/fetch', function (
         ->with('success', 'HTMLを取得・保存し、求人情報を抽出しました。')
         ->with('result', $result);
 })->name('hellowork.fetch.store');
+
+// LLM投入ZIPパック
+Route::get('/xray/llm-pack', function () {
+    return view('xray.llm-pack');
+})->name('xray.llm-pack.create');
+
+Route::post('/xray/llm-pack', function (
+    Request $request,
+    HelloWorkJobNumberExtractor $extractor,
+    HelloWorkHtmlFetcher $fetcher,
+    HelloWorkHtmlParser $parser,
+    HelloWorkLlmPackBuilder $packBuilder
+) {
+    $validated = $request->validate([
+        'url' => ['required', 'url'],
+    ]);
+
+    try {
+        $jobNumber = $extractor->extract($validated['url']);
+
+        $html = $fetcher->fetchHtml($validated['url']);
+
+        $parsed = $parser->parseHtml($html);
+
+        $companyName = $parsed['company_name'] ?? null;
+
+        $pack = $packBuilder->build(
+            $html,
+            $companyName,
+            $jobNumber
+        );
+    } catch (\Throwable $e) {
+        return back()
+            ->withErrors(['url' => $e->getMessage()])
+            ->withInput();
+    }
+
+    return response()
+    ->download($pack['file_path'], $pack['file_name'], [
+        'Content-Type' => 'application/zip',
+        'X-Content-Type-Options' => 'nosniff',
+        'Cache-Control' => 'no-store, no-cache, must-revalidate',
+    ])
+    ->deleteFileAfterSend();
+})->middleware('throttle:5,1')->name('xray.llm-pack.store');
