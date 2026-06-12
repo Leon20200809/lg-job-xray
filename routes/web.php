@@ -136,6 +136,7 @@ Route::get('/xray/llm-pack', function () {
     return view('xray.llm-pack');
 })->name('xray.llm-pack.create');
 
+// LLM投入ZIPパック ZIP作成＆ダウンロード
 Route::post('/xray/llm-pack', function (
     Request $request,
     HelloWorkJobNumberExtractor $extractor,
@@ -148,14 +149,17 @@ Route::post('/xray/llm-pack', function (
     ]);
 
     try {
+        // URLから「求人番号」をぶっこ抜く
         $jobNumber = $extractor->extract($validated['url']);
 
+        // ハローワークから生HTMLを爆速で取得
         $html = $fetcher->fetchHtml($validated['url']);
 
+        // 生HTMLを解析して「会社名」を特定（ファイル名用）
         $parsed = $parser->parseHtml($html);
-
         $companyName = $parsed['company_name'] ?? null;
 
+        // 生HTMLとプロンプト(Markdown)をZIPにパッキング
         $pack = $packBuilder->build(
             $html,
             $companyName,
@@ -167,6 +171,7 @@ Route::post('/xray/llm-pack', function (
             ->withInput();
     }
 
+    // レスポンス完了後に、ZIPを即自動削除
     return response()
     ->download($pack['file_path'], $pack['file_name'], [
         'Content-Type' => 'application/zip',
