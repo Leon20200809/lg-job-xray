@@ -1,0 +1,183 @@
+# GitHub Actions のワークフロー定義ファイル
+# mainブランチにpushされたときに、自動でXserverへLG Job X-Rayをデプロイする
+#
+# デプロイ方針：
+# - 初回のみXserver上へ手動でgit cloneする
+# - Xserver上のLaravel本体をgit pullで更新する
+# - Composerの本番用依存関係をインストールする
+# - Vite / Tailwind CSSの本番用ファイルをビルドする
+# - public配下をサブドメイン公開フォルダへ同期する
+# - 公開側の本番専用index.phpは上書きしない
+
+name: Deploy LG Job X-Ray for Xserver
+
+# mainブランチへのpushをトリガーにする
+on:
+  push:
+    branches:
+      - main
+
+  # GitHub画面から手動実行も可能
+  workflow_dispatch:
+
+# ワークフロー内で使い回す設定値
+env:
+  # Xserver SSH設定
+  REMOTE_USER: xs227617
+  REMOTE_HOST: sv16485.xserver.jp
+  REMOTE_PORT: 10022
+
+  # Xserver側のLaravel本体
+  REMOTE_APP_PATH: /home/xs227617/laravel-apps/lg-job-xray
+
+  # サブドメインの公開フォルダ
+  REMOTE_PUBLIC_PATH: /home/xs227617/lazygenius.dev/public_html/xray.lazygenius.dev
+
+permissions:
+  contents: read
+
+# 同じデプロイの多重実行を防ぐ
+concurrency:
+  group: deploy-lg-job-xray
+  cancel-in-progress: false
+
+jobs:
+
+  test:
+    name: Run tests and build assets
+    runs-on: ubuntu-latest
+
+    steps:
+      # GitHub上のLaravelコードをテスト環境へ取得
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # Laravelと同じPHP 8.3、ZIP生成・HTML解析・SQLiteテストに必要な拡張を準備
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: "8.3"
+          extensions: mbstring, dom, zip, pdo_sqlite
+          coverage: none
+
+      # PHPUnitを含む開発用Composer依存関係をインストール
+      - name: Install Composer dependencies
+        run: composer install --no-interaction --prefer-dist --no-progress
+
+      # CI用のLaravel環境ファイルとAPP_KEYを準備
+      - name: Prepare Laravel environment
+        run: |
+          cp .env.example .env
+          php artisan key:generate
+
+      # Vite 8を実行するNode.js環境を準備
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+
+      # package-lock.jsonどおりに依存関係をインストール
+      - name: Install Node dependencies
+        run: npm ci
+
+      # Tailwind CSS / Viteの本番用ファイルを生成できることを確認
+      - name: Build frontend assets
+        run: npm run build
+
+      # テスト用SQLiteメモリDBで全テストを実行
+      - name: Run PHPUnit tests
+        run: php artisan test
+
+
+  deploy:
+    name: Deploy to Xserver
+    runs-on: ubuntu-latest
+    needs: test
+
+    steps:
+      # XserverへSSH接続するための鍵を準備
+      - name: Configure SSH
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          KNOWN_HOSTS: ${{ secrets.KNOWN_HOSTS }}
+
+        run: |
+          set -Eeuo pipefail
+
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+
+          printf '%s\n' "$SSH_PRIVATE_KEY" > ~/.ssh/id_rsa
+          printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
+
+          chmod 600 ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/known_hosts
+
+      # Laravel本体を更新し、公開フォルダへ同期
+      - name: Deploy Laravel application
+        run: |
+          set -Eeuo pipefail
+
+          ssh \
+            -i ~/.ssh/id_rsa \
+            -p "$REMOTE_PORT" \
+            "$REMOTE_USER@$REMOTE_HOST" \
+            "REMOTE_APP_PATH='$REMOTE_APP_PATH' REMOTE_PUBLIC_PATH='$REMOTE_PUBLIC_PATH' bash -s" <<'REMOTE'
+          set -Eeuo pipefail
+
+          cd "$REMOTE_APP_PATH"
+
+          # 最新コードを取得
+          git pull --ff-only origin main
+
+          # Xserver上で使うPHPとComposer
+          PHP_BIN="/usr/bin/php8.3"
+          COMPOSER_BIN="/home/xs227617/bin/composer"
+
+          # 本番用依存関係をインストール
+          "$PHP_BIN" "$COMPOSER_BIN" install \
+            --no-dev \
+            --no-interaction \
+            --prefer-dist \
+            --optimize-autoloader
+
+          # 非対話SSHでもnvm管理のNode.jsを使えるようにする
+          export NVM_DIR="$HOME/.nvm"
+          . "$NVM_DIR/nvm.sh"
+
+          # package-lock.jsonどおりに依存関係をインストール
+          npm ci
+
+          # Vite / Tailwind CSSの本番用ファイルを生成
+          npm run build
+
+          # ZIP一時ファイルとLaravelキャッシュの保存先を保証
+          mkdir -p \
+            storage/app/llm-packs \
+            storage/framework/cache \
+            storage/framework/sessions \
+            storage/framework/views \
+            bootstrap/cache
+
+          chmod -R ug+rwX storage bootstrap/cache
+
+          # 古いLaravelキャッシュを削除
+          "$PHP_BIN" artisan optimize:clear
+
+          # 本番用設定とBladeビューをキャッシュ
+          "$PHP_BIN" artisan config:cache
+          "$PHP_BIN" artisan view:cache
+
+          # public配下を公開フォルダへ同期
+          mkdir -p "$REMOTE_PUBLIC_PATH"
+
+          rsync -a \
+            --delete \
+            --exclude="index.php" \
+            --exclude=".well-known/" \
+            "$REMOTE_APP_PATH/public/" \
+            "$REMOTE_PUBLIC_PATH/"
+
+          echo "Deployment completed"
+          REMOTE

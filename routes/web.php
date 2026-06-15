@@ -11,18 +11,8 @@ use App\Services\HelloWork\HelloWorkLlmPackBuilder;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 
-// 最初の定義（後で上書きされて無効になる）
-Route::get('/', function () {
-    return view('welcome'); // ← 実際には使われない
-})->name('xray.index');
-
-// これが '/' を上書きして有効になる
-Route::view('/', 'xray.llm-pack')->name('xray.index');
-
-// '/xray/llm-pack' も同じビューを返す
-Route::view('/xray/llm-pack', 'xray.llm-pack')
-    ->name('xray.llm-pack.create');
-
+Route::view('/', 'xray.llm-pack')
+    ->name('xray.index');
 
 
 Route::post('/xray', function (

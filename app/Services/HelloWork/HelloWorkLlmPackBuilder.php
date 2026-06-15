@@ -3,6 +3,7 @@
 namespace App\Services\HelloWork;
 
 use Illuminate\Support\Facades\File;
+use Illuminate\Support\Str;
 use ZipArchive;
 
 class HelloWorkLlmPackBuilder
@@ -16,8 +17,12 @@ class HelloWorkLlmPackBuilder
         $safeCompanyName = $this->safeFileName($companyName ?: 'unknown-company');
         $safeJobNumber = $this->safeFileName($jobNumber);
 
+        // ユーザーへダウンロードさせるファイル名
         $zipFileName = "{$safeCompanyName}_{$safeJobNumber}.zip";
-        $zipFilePath = $directory . DIRECTORY_SEPARATOR . $zipFileName;
+
+        // サーバー内部で一時保存する重複しないファイル名
+        $temporaryFileName = Str::uuid()->toString() . '.zip';
+        $zipFilePath = $directory . DIRECTORY_SEPARATOR . $temporaryFileName;
 
         $promptPath = resource_path('prompts/hellowork-wage-xray.md');
 
