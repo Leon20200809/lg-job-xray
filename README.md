@@ -1,5 +1,7 @@
 # LG Job X-Ray
 
+[![Deploy Laravel for Xserver](https://github.com/Leon20200809/lg-job-xray/actions/workflows/deploy.yml/badge.svg)](https://github.com/Leon20200809/lg-job-xray/actions/workflows/deploy.yml)
+
 **LG Job X-Ray** は、ハローワーク求人詳細ページのHTMLと、求人分析用のMarkdownプロンプトをZIP化するLaravel製Webツールです。
 
 求人票の表面上の月給だけでは見えにくい、年間休日・労働時間・残業・固定残業代・賞与を踏まえた実質時給と、求人票の文言から考えられる企業側の課題仮説を、利用者自身のLLMで分析できる形に整えます。
